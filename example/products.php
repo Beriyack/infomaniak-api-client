@@ -1,0 +1,177 @@
+<?php
+
+require __DIR__ . '/../vendor/autoload.php';
+
+use GuzzleHttp\Exception\RequestException;
+use App\InfomaniakApiClient;
+use App\Product;
+use Beriyack\Storage;
+
+// --- CONFIGURATION ---
+require_once __DIR__ . '/../../../config.secret.php';
+
+$baseUri = 'https://api.infomaniak.com';
+$certificatePath = __DIR__ . '/USERTrust RSA Certification Authority.crt';
+
+// --- Initialisation ---
+$apiClient = new InfomaniakApiClient($baseUri, API_INFOMANIAK, $certificatePath);
+$cacheDir = __DIR__ . '/cache';
+$cacheDuration = 60; // en secondes
+$dataFrom = '';
+
+try {
+    // 1. Récupérer les comptes
+    $accountsKey = 'all_accounts';
+    $accountsCacheFile = $cacheDir . '/' . sha1($accountsKey) . '.json';
+    $accountsData = null;
+
+    if (Storage::exists($accountsCacheFile) && (time() - Storage::lastModified($accountsCacheFile)) < $cacheDuration) {
+        $accountsData = json_decode(Storage::get($accountsCacheFile), true);
+    }
+
+    if ($accountsData === null) {
+        $accountsData = $apiClient->get('/1/accounts');
+        if (isset($accountsData['result']) && $accountsData['result'] === 'success') {
+            Storage::put($accountsCacheFile, json_encode($accountsData));
+        }
+    }
+
+    $accounts = [];
+    if (isset($accountsData['data'])) {
+        $accounts = array_column($accountsData['data'], 'name', 'id');
+        asort($accounts);
+    }
+
+    // 1.bis. Récupérer les types de produits
+    $productTypesKey = 'all_product_types';
+    $productTypesCacheFile = $cacheDir . '/' . sha1($productTypesKey) . '.json';
+    $productTypes = null;
+
+    if (Storage::exists($productTypesCacheFile) && (time() - Storage::lastModified($productTypesCacheFile)) < 86400) { // Cache de 24h pour les types
+        $productTypes = json_decode(Storage::get($productTypesCacheFile), true);
+    }
+
+    if ($productTypes === null) {
+        // Pour obtenir tous les types, on fait un appel sur tous les produits sans pagination.
+        $allProductsData = $apiClient->get('/1/products');
+        if (isset($allProductsData['data'])) {
+            $productTypes = array_unique(array_column($allProductsData['data'], 'service_name'));
+            sort($productTypes);
+            Storage::put($productTypesCacheFile, json_encode($productTypes));
+        }
+    }
+
+    // 2. Récupérer les filtres et paramètres de la page
+    $currentPage = isset($_GET['page']) ? max(1, (int)$_GET['page']) : 1;
+    $selectedAccountId = isset($_GET['account_id']) ? (int)$_GET['account_id'] : null;
+    $searchName = isset($_GET['search_name']) && !empty($_GET['search_name']) ? $_GET['search_name'] : null;
+    $selectedType = isset($_GET['type']) && !empty($_GET['type']) ? $_GET['type'] : null;
+    $itemsPerPageOptions = [15, 25, 50, 100];
+    $itemsPerPage = in_array((int)($_GET['per_page'] ?? 15), $itemsPerPageOptions) ? (int)($_GET['per_page'] ?? 15) : 15;
+
+    // Si une recherche par nom est effectuée, nous devons récupérer tous les produits,
+    // les filtrer, puis les paginer nous-mêmes.
+    if ($searchName) {
+        // Clé de cache pour la liste complète (sans pagination)
+        $fullProductsKey = 'full_products_account_' . ($selectedAccountId ?? 'all') . '_type_' . ($selectedType ?? 'all');
+        $fullProductsCacheFile = $cacheDir . '/' . sha1($fullProductsKey) . '.json';
+        $allProducts = null;
+
+        if (Storage::exists($fullProductsCacheFile) && (time() - Storage::lastModified($fullProductsCacheFile)) < $cacheDuration) {
+            $allProducts = json_decode(Storage::get($fullProductsCacheFile), true);
+            $dataFrom = 'Cache';
+        }
+
+        if ($allProducts === null) {
+            $dataFrom = 'API Infomaniak (recherche complète)';
+            $allProducts = [];
+            $apiPage = 1;
+            do {
+                $queryParams = ['page' => $apiPage, 'per_page' => 100]; // On récupère par lots de 100
+                if ($selectedAccountId) $queryParams['account_id'] = $selectedAccountId;
+                if ($selectedType) $queryParams['service_name'] = $selectedType;
+
+                $pageData = $apiClient->get('/1/products', $queryParams);
+                if (isset($pageData['data']) && !empty($pageData['data'])) {
+                    $allProducts = array_merge($allProducts, $pageData['data']);
+                }
+                $apiPage++;
+            } while (isset($pageData['page']) && $pageData['page'] < $pageData['pages']);
+
+            Storage::put($fullProductsCacheFile, json_encode($allProducts));
+        }
+
+        // Filtrage en PHP sur la liste complète
+        $filteredProducts = array_filter($allProducts, function ($productData) use ($searchName) {
+            return strpos(strtolower($productData['customer_name']), strtolower($searchName)) !== false;
+        });
+
+        // Pagination manuelle des résultats filtrés
+        $totalItems = count($filteredProducts);
+        $totalPages = ceil($totalItems / $itemsPerPage);
+        $offset = ($currentPage - 1) * $itemsPerPage;
+        $paginatedProducts = array_slice($filteredProducts, $offset, $itemsPerPage);
+
+        $data = [
+            'result' => 'success',
+            'data' => $paginatedProducts,
+            'page' => $currentPage,
+            'pages' => $totalPages,
+            'total' => $totalItems
+        ];
+    } else {
+        // --- Comportement normal (sans recherche par nom) ---
+        $productsKey = 'products_account_' . ($selectedAccountId ?? 'all') . '_type_' . ($selectedType ?? 'all') . '_page_' . $currentPage . '_perpage_' . $itemsPerPage;
+        $productsCacheFile = $cacheDir . '/' . sha1($productsKey) . '.json';
+        $data = null;
+
+        if (Storage::exists($productsCacheFile) && (time() - Storage::lastModified($productsCacheFile)) < $cacheDuration) {
+            $data = json_decode(Storage::get($productsCacheFile), true);
+            $dataFrom = 'Cache';
+        }
+
+        if ($data === null) {
+            $dataFrom = 'API Infomaniak';
+            $queryParams = ['page' => $currentPage, 'per_page' => $itemsPerPage];
+            if ($selectedAccountId) $queryParams['account_id'] = $selectedAccountId;
+            if ($selectedType) $queryParams['service_name'] = $selectedType;
+            $data = $apiClient->get('/1/products', $queryParams);
+            if (isset($data['result']) && $data['result'] === 'success') {
+                Storage::put($productsCacheFile, json_encode($data));
+            }
+        }
+    }
+
+    // Assurer que les clés de pagination existent pour l'affichage, même si l'API ne les retourne pas (cas d'une seule page)
+    if (isset($data['result']) && $data['result'] === 'success' && !isset($data['page'])) {
+        $data['page'] = 1;
+        $data['pages'] = 1;
+    }
+
+    // Convert raw product data arrays into Product objects
+    if (isset($data['data'])) {
+        $data['data'] = array_map(function ($productData) {
+            return new Product($productData);
+        }, $data['data']);
+    }
+
+    $body = json_encode($data); // Pour la vue JSON
+
+} catch (RequestException $e) {
+    // Gérer les erreurs
+    if ($e->hasResponse()) {
+        $errorBody = $e->getResponse()->getBody()->getContents();
+        $errorData = json_decode($errorBody, true);
+        $errorMessage = $errorData['error']['description'] ?? $errorBody;
+    } else {
+        $errorMessage = $e->getMessage();
+    }
+}
+
+// --- Logique d'affichage ---
+if (isset($_GET['format']) && $_GET['format'] === 'json') {
+    include 'json_view.php';
+    exit;
+}
+
+include 'display.php';

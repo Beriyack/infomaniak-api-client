@@ -1,0 +1,18 @@
+{
+    "name": "beriyack/infomaniak-api-client",
+    "type": "library",
+    "require": {
+        "guzzlehttp/guzzle": "^7.10",
+        "beriyack/storage": "^1.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "App\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Beriyack"
+        }
+    ]
+}
