@@ -35,7 +35,6 @@ Le projet inclut une application d'exemple complète qui démontre des fonctionn
     ```bash
     composer require beriyack/infomaniak-api-client
     ```
-    *(Note : Ce nom de package est un exemple. Adaptez-le si vous le publiez sous un autre nom sur Packagist.)*
 
 2.  **Incluez l'autoloader de Composer** dans votre fichier PHP :
 

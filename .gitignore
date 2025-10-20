@@ -19,3 +19,6 @@ logs/
 .env
 .env.local
 .env.*.local
+
+# Cache file
+/example/cache/

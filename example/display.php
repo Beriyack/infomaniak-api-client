@@ -5,7 +5,10 @@ include __DIR__ . '/parts/header.php';
 
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h1>Liste des produits Infomaniak</h1>
-            <a href="?<?php echo http_build_query(array_merge($_GET, ['format' => 'json'])); ?>" class="btn btn-outline-secondary" target="_blank">Voir en JSON</a>
+            <div class="btn-group">
+                <a href="?<?php echo http_build_query(array_merge($_GET, ['format' => 'json'])); ?>" class="btn btn-outline-secondary" target="_blank">JSON (Traité)</a>
+                <a href="?<?php echo http_build_query(array_merge($_GET, ['format' => 'json', 'raw' => '1'])); ?>" class="btn btn-outline-info" target="_blank">JSON (Brut)</a>
+            </div>
         </div>
 
         <?php if (!empty($dataFrom)) : ?>
@@ -68,6 +71,7 @@ include __DIR__ . '/parts/header.php';
                             <th scope="col">ID Produit</th>
                             <th scope="col">Nom du produit</th>
                             <th scope="col">Type de service</th>
+                            <th scope="col">Stockage</th>
                             <th scope="col">Expirations</th>
                             <th scope="col" class="text-center">Action</th>
                         </tr>
@@ -79,6 +83,7 @@ include __DIR__ . '/parts/header.php';
                                 <td><?php echo $product->getId(); ?></td>
                                 <td><?php echo $product->getCustomerName(); ?></td>
                                 <td><?php echo $product->getServiceName(); ?></td>
+                                <td><?php echo $product->getDiskUsageStatusBadge(); ?></td>
                                 <td>
                                     <?php echo $product->getProductExpirationStatusBadge(); ?><br>
                                     <?php echo $product->getSslExpirationStatusBadge(); ?>

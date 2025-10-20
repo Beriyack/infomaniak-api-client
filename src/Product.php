@@ -12,9 +12,8 @@ class Product implements JsonSerializable
     private int $accountId;
     private ?int $createdAt;
     private ?int $expiredAt;
-
-    private ?array $details;
-    // Nouvelles propriétés pour les données enrichies
+    protected ?array $details;
+    // Propriétés pour les données enrichies
     private ?int $diskUsage = null;
     private ?int $diskLimit = null;
     private ?int $sslExpiresAt = null;
@@ -27,7 +26,6 @@ class Product implements JsonSerializable
         $this->accountId = $data['account_id'];
         $this->createdAt = $data['created_at'] ?? null;
         $this->expiredAt = $data['expired_at'] ?? null;
-
         $this->details = $data['details'] ?? null;
         // Traitement des détails enrichis
         if (isset($data['details'])) {
@@ -151,7 +149,6 @@ class Product implements JsonSerializable
     {
         // Returns all object properties as an array
         $vars = get_object_vars($this);
-        // On ajoute les valeurs formatées pour un accès facile en JS
         $vars['formattedDiskUsage'] = $this->getFormattedDiskUsage();
         $vars['productExpirationStatus'] = strip_tags($this->getProductExpirationStatusBadge());
         $vars['sslExpirationStatus'] = strip_tags($this->getSslExpirationStatusBadge());

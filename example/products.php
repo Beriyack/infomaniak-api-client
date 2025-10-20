@@ -124,6 +124,7 @@ try {
         $productsKey = 'products_account_' . ($selectedAccountId ?? 'all') . '_type_' . ($selectedType ?? 'all') . '_page_' . $currentPage . '_perpage_' . $itemsPerPage;
         $productsCacheFile = $cacheDir . '/' . sha1($productsKey) . '.json';
         $data = null;
+        $rawApiData = null;
 
         if (Storage::exists($productsCacheFile) && (time() - Storage::lastModified($productsCacheFile)) < $cacheDuration) {
             $data = json_decode(Storage::get($productsCacheFile), true);
@@ -135,10 +136,33 @@ try {
             $queryParams = ['page' => $currentPage, 'per_page' => $itemsPerPage];
             if ($selectedAccountId) $queryParams['account_id'] = $selectedAccountId;
             if ($selectedType) $queryParams['service_name'] = $selectedType;
-            $data = $apiClient->get('/1/products', $queryParams);
+            
+            $rawApiData = $apiClient->get('/1/products', $queryParams);
+            $data = $rawApiData; // On continue le traitement avec les mêmes données
+
             if (isset($data['result']) && $data['result'] === 'success') {
                 Storage::put($productsCacheFile, json_encode($data));
             }
+        }
+
+        // Enrichir les produits de la page courante avec leurs détails si ce sont des hébergements
+        if (isset($data['data'])) {
+            foreach ($data['data'] as &$product) {
+                if ($product['service_name'] === 'web_hosting') {
+                    $detailsKey = 'product_details_' . $product['id'];
+                    $detailsCacheFile = $cacheDir . '/' . sha1($detailsKey) . '.json';
+                    $detailsData = null;
+
+                    if (Storage::exists($detailsCacheFile) && (time() - Storage::lastModified($detailsCacheFile)) < $cacheDuration) {
+                        $detailsData = json_decode(Storage::get($detailsCacheFile), true);
+                    } else {
+                        $detailsData = $apiClient->get('/1/products/' . $product['id']);
+                        Storage::put($detailsCacheFile, json_encode($detailsData));
+                    }
+                    $product['details'] = $detailsData['data'] ?? null;
+                }
+            }
+            unset($product);
         }
     }
 
@@ -155,7 +179,17 @@ try {
         }, $data['data']);
     }
 
-    $body = json_encode($data); // Pour la vue JSON
+    // Si l'utilisateur demande la vue JSON brute, on utilise les données avant traitement.
+    if (isset($_GET['format']) && $_GET['format'] === 'json' && isset($_GET['raw']) && $_GET['raw'] === '1') {
+        if ($searchName) {
+            // En cas de recherche, la donnée "brute" est la liste complète avant pagination
+            $body = json_encode($allProducts);
+        } else {
+            $body = json_encode($rawApiData ?? $data);
+        }
+    } else {
+        $body = json_encode($data); // Pour la vue JSON traitée ou la vue HTML
+    }
 
 } catch (RequestException $e) {
     // Gérer les erreurs

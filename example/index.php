@@ -3,6 +3,7 @@
 require __DIR__ . '/../vendor/autoload.php';
 
 use GuzzleHttp\Exception\RequestException;
+use App\ProductFactory;
 use App\InfomaniakApiClient;
 use App\Product;
 use Beriyack\Storage;
@@ -35,12 +36,31 @@ try {
         $allProducts = [];
         $apiPage = 1;
         do {
-            $pageData = $apiClient->get('/1/products', ['page' => $apiPage, 'per_page' => 100]);
+            $pageData = $apiClient->get('/1/products', ['page' => $apiPage, 'per_page' => 100, 'with' => 'fqdn']);
             if (isset($pageData['data']) && !empty($pageData['data'])) {
                 $allProducts = array_merge($allProducts, $pageData['data']);
             }
             $apiPage++;
         } while (isset($pageData['page']) && $pageData['page'] < $pageData['pages']);
+
+        // Étape supplémentaire : enrichir les produits avec leurs détails
+        foreach ($allProducts as &$product) {
+            // On ne cherche les détails que pour les hébergements web
+            if ($product['service_name'] === 'web_hosting') {
+                $detailsKey = 'product_details_' . $product['id'];
+                $detailsCacheFile = $cacheDir . '/' . sha1($detailsKey) . '.json';
+                $detailsData = null;
+
+                if (Storage::exists($detailsCacheFile) && (time() - Storage::lastModified($detailsCacheFile)) < $cacheDuration) {
+                    $detailsData = json_decode(Storage::get($detailsCacheFile), true);
+                } else {
+                    $detailsData = $apiClient->get('/1/products/' . $product['id']);
+                    Storage::put($detailsCacheFile, json_encode($detailsData));
+                }
+                $product['details'] = $detailsData['data'] ?? null;
+            }
+        }
+        unset($product); // Important: détruire la référence
 
         Storage::put($fullProductsCacheFile, json_encode($allProducts));
     }
@@ -63,12 +83,17 @@ try {
     // Préparer les données pour la vue
     $data = [
         'result' => 'success',
-        'data' => array_map(fn($p) => new Product($p), $criticalProducts)
+        'data' => array_map(fn($p) => new Product($p), array_values($criticalProducts))
     ];
 
     // On a besoin de la liste des comptes pour l'affichage
-    $accountsData = json_decode(Storage::get($cacheDir . '/' . sha1('all_accounts') . '.json'), true);
-    $accounts = isset($accountsData['data']) ? array_column($accountsData['data'], 'name', 'id') : [];
+    $accountsCacheFile = $cacheDir . '/' . sha1('all_accounts') . '.json';
+    $accounts = [];
+    if (Storage::exists($accountsCacheFile)) {
+        $accountsData = json_decode(Storage::get($accountsCacheFile), true);
+        // On s'assure que les données sont valides avant de les utiliser
+        $accounts = isset($accountsData['data']) ? array_column($accountsData['data'], 'name', 'id') : [];
+    }
 
 } catch (RequestException $e) {
     if ($e->hasResponse()) {
