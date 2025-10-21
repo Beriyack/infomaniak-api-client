@@ -1,19 +1,20 @@
 <?php
 $pageTitle = "Tous les produits";
 include __DIR__ . '/parts/header.php';
-?>
 
+use App\Product;
+?>
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h1>Liste des produits Infomaniak</h1>
             <div class="btn-group">
-                <a href="?<?php echo http_build_query(array_merge($_GET, ['format' => 'json'])); ?>" class="btn btn-outline-secondary" target="_blank">JSON (Traité)</a>
-                <a href="?<?php echo http_build_query(array_merge($_GET, ['format' => 'json', 'raw' => '1'])); ?>" class="btn btn-outline-info" target="_blank">JSON (Brut)</a>
+                <a href="?<?= http_build_query(array_merge($_GET, ['format' => 'json'])) ?>" class="btn btn-outline-secondary">JSON (Traité)</a>
+                <a href="?<?= http_build_query(array_merge($_GET, ['format' => 'json', 'raw' => '1'])) ?>" class="btn btn-outline-info">JSON (Brut)</a>
             </div>
         </div>
 
         <?php if (!empty($dataFrom)) : ?>
             <p class="text-muted fst-italic">
-                Données chargées depuis : <strong><?php echo $dataFrom; ?></strong>
+                Données chargées depuis : <strong><?= $dataFrom ?></strong>
             </p>
         <?php endif; ?>
 
@@ -22,16 +23,16 @@ include __DIR__ . '/parts/header.php';
             <div class="row g-3 align-items-end">
                 <div class="col-12 col-md-4">
                     <label for="search_name" class="form-label fw-bold">Rechercher par nom :</label>
-                    <input type="text" name="search_name" id="search_name" class="form-control" placeholder="Ex: Mon site web" value="<?php echo htmlspecialchars($searchName ?? ''); ?>">
+                    <input type="text" name="search_name" id="search_name" class="form-control" placeholder="Ex: Mon site web" value="<?= htmlspecialchars($searchName ?? '') ?>">
                 </div>
 
                 <div class="col-md-3">
                     <label for="account_id" class="form-label fw-bold">Filtrer par compte :</label>
                     <select name="account_id" id="account_id" class="form-select">
                         <option value="">Tous les comptes</option>
-                        <?php foreach ($accounts as $id => $name): ?>
-                            <option value="<?php echo $id; ?>" <?php echo (isset($selectedAccountId) && $selectedAccountId == $id) ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($name) . ' (' . $id . ')'; ?>
+                        <?php foreach ($accounts as $id => $name) : ?>
+                            <option value="<?= $id ?>" <?= (isset($selectedAccountId) && $selectedAccountId == $id) ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($name) . ' (' . $id . ')' ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -40,9 +41,9 @@ include __DIR__ . '/parts/header.php';
                     <label for="type" class="form-label fw-bold">Filtrer par type :</label>
                     <select name="type" id="type" class="form-select">
                         <option value="">Tous les types</option>
-                        <?php foreach ($productTypes as $type): ?>
-                            <option value="<?php echo htmlspecialchars($type); ?>" <?php echo (isset($selectedType) && $selectedType == $type) ? 'selected' : ''; ?>>
-                                <?php echo htmlspecialchars($type); ?>
+                        <?php foreach ($productTypes as $type) : ?>
+                            <option value="<?= htmlspecialchars($type) ?>" <?= (isset($selectedType) && $selectedType == $type) ? 'selected' : '' ?>>
+                                <?= htmlspecialchars($type) ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -50,9 +51,9 @@ include __DIR__ . '/parts/header.php';
                 <div class="col-md-2">
                     <label for="per_page" class="form-label fw-bold">Par page :</label>
                     <select name="per_page" id="per_page" class="form-select">
-                        <?php foreach ($itemsPerPageOptions as $option): ?>
-                            <option value="<?php echo $option; ?>" <?php echo ($itemsPerPage == $option) ? 'selected' : ''; ?>>
-                                <?php echo $option; ?>
+                        <?php foreach ($itemsPerPageOptions as $option) : ?>
+                            <option value="<?= $option ?>" <?= ($itemsPerPage == $option) ? 'selected' : '' ?>>
+                                <?= $option ?>
                             </option>
                         <?php endforeach; ?>
                     </select>
@@ -71,22 +72,20 @@ include __DIR__ . '/parts/header.php';
                             <th scope="col">ID Produit</th>
                             <th scope="col">Nom du produit</th>
                             <th scope="col">Type de service</th>
-                            <th scope="col">Stockage</th>
                             <th scope="col">Expirations</th>
                             <th scope="col" class="text-center">Action</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($data['data'] as $product) : ?>
+                        <?php /** @var Product $product */ foreach ($data['data'] as $product) : ?>
                             <!-- Ajout des données du produit en attribut data- pour le JS -->
-                            <tr data-product-details='<?php echo json_encode($product); ?>'>
-                                <td><?php echo $product->getId(); ?></td>
-                                <td><?php echo $product->getCustomerName(); ?></td>
-                                <td><?php echo $product->getServiceName(); ?></td>
-                                <td><?php echo $product->getDiskUsageStatusBadge(); ?></td>
+                            <!-- Utilisation de htmlspecialchars pour sécuriser le JSON dans l'attribut HTML -->
+                            <tr data-product-details='<?= htmlspecialchars(json_encode($product->getRawData())) ?>'>
+                                <td><?= $product->getId() ?></td>
+                                <td><?= $product->getCustomerName() ?></td>
+                                <td><?= $product->getServiceName() ?></td>
                                 <td>
-                                    <?php echo $product->getProductExpirationStatusBadge(); ?><br>
-                                    <?php echo $product->getSslExpirationStatusBadge(); ?>
+                                    <?= $product->getProductExpirationStatusBadge() ?>
                                 </td>
                                 <td class="text-center">
                                     <button class="btn btn-sm btn-info view-details-btn" data-bs-toggle="modal" data-bs-target="#detailsModal">
@@ -109,17 +108,17 @@ include __DIR__ . '/parts/header.php';
                 <nav aria-label="Page navigation" class="mt-4">
                     <ul class="pagination justify-content-center">
                         <!-- Bouton Précédent -->
-                        <li class="page-item <?php echo ($currentPage <= 1) ? 'disabled' : ''; ?>">
-                            <a class="page-link" href="?<?php echo http_build_query(array_merge($_GET, ['page' => $currentPage - 1])); ?>">Précédent</a>
+                        <li class="page-item <?= ($currentPage <= 1) ? 'disabled' : '' ?>">
+                            <a class="page-link" href="?<?= http_build_query(array_merge($_GET, ['page' => $currentPage - 1])) ?>">Précédent</a>
                         </li>
 
-                        <?php for ($i = 1; $i <= $totalPages; $i++): ?>
+                        <?php for ($i = 1; $i <= $totalPages; $i++) : ?>
                             <?php
                             // Conditions pour afficher le numéro de page
                             if ($i == 1 || $i == $totalPages || ($i >= $currentPage - $range && $i <= $currentPage + $range)) {
                                 ?>
-                                <li class="page-item <?php echo ($i == $currentPage) ? 'active' : ''; ?>">
-                                    <a class="page-link" href="?<?php echo http_build_query(array_merge($_GET, ['page' => $i])); ?>"><?php echo $i; ?></a>
+                                <li class="page-item <?= ($i == $currentPage) ? 'active' : '' ?>">
+                                    <a class="page-link" href="?<?= http_build_query(array_merge($_GET, ['page' => $i])) ?>"><?= $i ?></a>
                                 </li>
                                 <?php
                             }
@@ -135,8 +134,8 @@ include __DIR__ . '/parts/header.php';
                         <?php endfor; ?>
 
                         <!-- Bouton Suivant -->
-                        <li class="page-item <?php echo ($currentPage >= $totalPages) ? 'disabled' : ''; ?>">
-                            <a class="page-link" href="?<?php echo http_build_query(array_merge($_GET, ['page' => $currentPage + 1])); ?>">Suivant</a>
+                        <li class="page-item <?= ($currentPage >= $totalPages) ? 'disabled' : '' ?>">
+                            <a class="page-link" href="?<?= http_build_query(array_merge($_GET, ['page' => $currentPage + 1])) ?>">Suivant</a>
                         </li>
                     </ul>
                 </nav>
@@ -147,7 +146,7 @@ include __DIR__ . '/parts/header.php';
                 <h4 class="alert-heading">Une erreur est survenue !</h4>
                 <p>Impossible de récupérer les données depuis l'API d'Infomaniak.</p>
                 <hr>
-                <p class="mb-0">Détail de l'erreur : <?php echo htmlspecialchars($errorMessage); ?></p>
+                <p class="mb-0">Détail de l'erreur : <?= htmlspecialchars($errorMessage) ?></p>
             </div>
         <?php else : ?>
             <div class="alert alert-info" role="alert">
@@ -186,11 +185,11 @@ include __DIR__ . '/parts/header.php';
                 const button = event.relatedTarget;
                 // Récupérer les données depuis l'attribut data- de la ligne <tr> parente
                 const productRow = button.closest('tr');
-                const productData = JSON.parse(productRow.getAttribute('data-product-details'));
+                const productRawData = JSON.parse(productRow.getAttribute('data-product-details'));
 
                 // Récupérer le nom du compte depuis la liste PHP
-                const accounts = <?php echo json_encode($accounts); ?>;
-                const accountName = accounts[productData.accountId] || `ID: ${productData.accountId}`;
+                const accounts = <?= json_encode($accounts) ?>;
+                const accountName = accounts[productRawData.account_id] || `ID: ${productRawData.account_id}`;
 
                 // Mettre à jour le contenu de la modale
                 const modalTitle = detailsModal.querySelector('.modal-title');
@@ -198,13 +197,13 @@ include __DIR__ . '/parts/header.php';
                 const modalAccountName = detailsModal.querySelector('#modal-account-name');
                 const modalJsonDetails = detailsModal.querySelector('#modal-json-details');
 
-                modalTitle.textContent = `Détails pour : ${productData.customerName}`;
-                modalProductName.textContent = productData.serviceName;
+                modalTitle.textContent = `Détails pour : ${productRawData.customer_name}`;
+                modalProductName.textContent = productRawData.service_name;
                 modalAccountName.textContent = accountName;
 
-                // Afficher toutes les données "details" dans un format JSON propre
-                if (productData.details) {
-                    modalJsonDetails.textContent = JSON.stringify(productData.details, null, 2);
+                // Afficher toutes les données brutes dans un format JSON propre
+                if (productRawData) {
+                    modalJsonDetails.textContent = JSON.stringify(productRawData, null, 2);
                 } else {
                     modalJsonDetails.textContent = 'Aucun détail technique disponible pour ce produit.';
                 }

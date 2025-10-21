@@ -3,7 +3,7 @@
     "type": "library",
     "require": {
         "guzzlehttp/guzzle": "^7.10",
-        "beriyack/storage": "^1.0"
+        "beriyack/storage": "^2.1"
     },
     "autoload": {
         "psr-4": {

@@ -13,27 +13,18 @@ class Product implements JsonSerializable
     private ?int $createdAt;
     private ?int $expiredAt;
     protected ?array $details;
-    // Propriétés pour les données enrichies
-    private ?int $diskUsage = null;
-    private ?int $diskLimit = null;
-    private ?int $sslExpiresAt = null;
+    protected array $rawData;
 
     public function __construct(array $data)
     {
+        $this->rawData = $data; // Conserve les données brutes pour la sérialisation et le débogage
         $this->id = $data['id'];
         $this->customerName = $data['customer_name'];
         $this->serviceName = $data['service_name'];
         $this->accountId = $data['account_id'];
         $this->createdAt = $data['created_at'] ?? null;
         $this->expiredAt = $data['expired_at'] ?? null;
-        $this->details = $data['details'] ?? null;
-        // Traitement des détails enrichis
-        if (isset($data['details'])) {
-            $details = $data['details'];
-            $this->diskUsage = $details['quota']['disk_usage'] ?? null;
-            $this->diskLimit = $details['quota']['disk_limit'] ?? null;
-            $this->sslExpiresAt = isset($details['ssl']['expires_on']) ? strtotime($details['ssl']['expires_on']) : null;
-        }
+        $this->details = $data['details'] ?? null; // Peut contenir des infos comme le FQDN
     }
 
     public function getId(): int
@@ -43,12 +34,12 @@ class Product implements JsonSerializable
 
     public function getCustomerName(): string
     {
-        return htmlspecialchars($this->customerName);
+        return $this->customerName;
     }
 
     public function getServiceName(): string
     {
-        return htmlspecialchars($this->serviceName);
+        return $this->serviceName;
     }
 
     public function getAccountId(): int
@@ -72,41 +63,6 @@ class Product implements JsonSerializable
         return date($format, $this->expiredAt);
     }
 
-    // --- Méthodes pour le stockage ---
-
-    public function getFormattedDiskUsage(): string
-    {
-        if ($this->diskUsage === null || $this->diskLimit === null || $this->diskLimit === 0) {
-            return 'N/A';
-        }
-
-        $usageGo = round($this->diskUsage / 1024 / 1024 / 1024, 2);
-        $limitGo = round($this->diskLimit / 1024 / 1024 / 1024, 2);
-        $percentage = round(($this->diskUsage / $this->diskLimit) * 100);
-
-        return "{$usageGo} / {$limitGo} Go ({$percentage}%)";
-    }
-
-    public function getDiskUsageStatusBadge(): string
-    {
-        if ($this->diskUsage === null || $this->diskLimit === null || $this->diskLimit === 0) {
-            return ''; // Pas de badge si pas de données
-        }
-
-        $percentage = ($this->diskUsage / $this->diskLimit) * 100;
-        $class = 'bg-secondary';
-
-        if ($percentage < 75) {
-            $class = 'bg-success';
-        } elseif ($percentage < 90) {
-            $class = 'bg-warning';
-        } else {
-            $class = 'bg-danger';
-        }
-
-        return "<span class=\"badge {$class}\">{$this->getFormattedDiskUsage()}</span>";
-    }
-
     // --- Méthodes pour les expirations (Produit, Domaine, SSL) ---
 
     private function getExpirationStatus(string $label, ?int $timestamp): string
@@ -115,7 +71,7 @@ class Product implements JsonSerializable
             return ''; // Pas de badge si pas de date
         }
 
-        $daysRemaining = floor(($timestamp - time()) / (60 * 60 * 24));
+        $daysRemaining = $this->getDaysUntilTimestamp($timestamp);
         $class = 'bg-success'; // Vert par défaut
 
         if ($daysRemaining < 0) {
@@ -137,9 +93,34 @@ class Product implements JsonSerializable
         return $this->getExpirationStatus('Produit', $this->expiredAt);
     }
 
-    public function getSslExpirationStatusBadge(): string
+    private function getDaysUntilTimestamp(?int $timestamp): ?int
     {
-        return $this->getExpirationStatus('SSL', $this->sslExpiresAt);
+        if ($timestamp === null) {
+            return null;
+        }
+        return (int) floor(($timestamp - time()) / 86400); // 86400 = 60 * 60 * 24
+    }
+
+    public function getDaysUntilProductExpiration(): ?int
+    {
+        return $this->getDaysUntilTimestamp($this->expiredAt);
+    }
+
+    /**
+     * Détermine si le produit est dans un état "critique" (expiration proche).
+     * @return bool
+     */
+    public function isCritical(): bool
+    {
+        $productDays = $this->getDaysUntilProductExpiration();
+
+        // Un produit est critique si son expiration est dans 30 jours ou moins.
+        return $productDays !== null && $productDays <= 30;
+    }
+
+    public function getRawData(): array
+    {
+        return $this->rawData;
     }
 
     /**
@@ -147,14 +128,7 @@ class Product implements JsonSerializable
      */
     public function jsonSerialize(): array
     {
-        // Returns all object properties as an array
-        $vars = get_object_vars($this);
-        $vars['formattedDiskUsage'] = $this->getFormattedDiskUsage();
-        $vars['productExpirationStatus'] = strip_tags($this->getProductExpirationStatusBadge());
-        $vars['sslExpirationStatus'] = strip_tags($this->getSslExpirationStatusBadge());
-        $vars['formattedCreatedAt'] = $this->getFormattedCreatedAt();
-        $vars['formattedExpiredAt'] = $this->getFormattedExpiredAt();
-
-        return $vars;
+        // Retourne les données brutes originales, ce qui est plus utile pour le débogage.
+        return $this->rawData;
     }
 }

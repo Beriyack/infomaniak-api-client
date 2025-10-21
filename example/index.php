@@ -3,7 +3,6 @@
 require __DIR__ . '/../vendor/autoload.php';
 
 use GuzzleHttp\Exception\RequestException;
-use App\ProductFactory;
 use App\InfomaniakApiClient;
 use App\Product;
 use Beriyack\Storage;
@@ -17,85 +16,60 @@ $certificatePath = __DIR__ . '/USERTrust RSA Certification Authority.crt';
 // --- Initialisation ---
 $apiClient = new InfomaniakApiClient($baseUri, API_INFOMANIAK, $certificatePath);
 $cacheDir = __DIR__ . '/cache';
-$cacheDuration = 3600; // Cache d'une heure pour le dashboard
-$dataFrom = '';
+$cacheDuration = 43200; // Cache de 12 heures. Les dates d'expiration ne changent pas souvent.
+$dataFrom = 'Cache'; // Initialise à 'Cache', sera mis à jour si un appel API est fait
 
 try {
-    // Pour le dashboard, nous récupérons toujours la liste complète des produits
-    $fullProductsKey = 'dashboard_full_products';
-    $fullProductsCacheFile = $cacheDir . '/' . sha1($fullProductsKey) . '.json';
+    // --- 1. Récupérer tous les produits (depuis le cache ou l'API) ---
+    $productsCacheKey = 'all_products_list';
+    $productsCacheFile = $cacheDir . '/' . sha1($productsCacheKey) . '.json';
     $allProducts = null;
 
-    if (Storage::exists($fullProductsCacheFile) && (time() - Storage::lastModified($fullProductsCacheFile)) < $cacheDuration) {
-        $allProducts = json_decode(Storage::get($fullProductsCacheFile), true);
-        $dataFrom = 'Cache';
+    if (Storage::exists($productsCacheFile) && (time() - Storage::lastModified($productsCacheFile)) < $cacheDuration) {
+        $allProducts = json_decode(Storage::get($productsCacheFile), true);
     }
 
     if ($allProducts === null) {
-        $dataFrom = 'API Infomaniak (Dashboard)';
-        $allProducts = [];
-        $apiPage = 1;
-        do {
-            $pageData = $apiClient->get('/1/products', ['page' => $apiPage, 'per_page' => 100, 'with' => 'fqdn']);
-            if (isset($pageData['data']) && !empty($pageData['data'])) {
-                $allProducts = array_merge($allProducts, $pageData['data']);
-            }
-            $apiPage++;
-        } while (isset($pageData['page']) && $pageData['page'] < $pageData['pages']);
-
-        // Étape supplémentaire : enrichir les produits avec leurs détails
-        foreach ($allProducts as &$product) {
-            // On ne cherche les détails que pour les hébergements web
-            if ($product['service_name'] === 'web_hosting') {
-                $detailsKey = 'product_details_' . $product['id'];
-                $detailsCacheFile = $cacheDir . '/' . sha1($detailsKey) . '.json';
-                $detailsData = null;
-
-                if (Storage::exists($detailsCacheFile) && (time() - Storage::lastModified($detailsCacheFile)) < $cacheDuration) {
-                    $detailsData = json_decode(Storage::get($detailsCacheFile), true);
-                } else {
-                    $detailsData = $apiClient->get('/1/products/' . $product['id']);
-                    Storage::put($detailsCacheFile, json_encode($detailsData));
-                }
-                $product['details'] = $detailsData['data'] ?? null;
-            }
-        }
-        unset($product); // Important: détruire la référence
-
-        Storage::put($fullProductsCacheFile, json_encode($allProducts));
+        $dataFrom = 'API Infomaniak';
+        // Utilise la nouvelle méthode qui gère la pagination
+        $allProducts = $apiClient->getAllProducts(['with' => 'fqdn']);
+        Storage::put($productsCacheFile, json_encode($allProducts));
     }
 
-    // Filtrer pour ne garder que les produits "critiques"
-    $criticalProducts = array_filter($allProducts, function ($productData) {
-        // Condition 1: Expiration proche (produit ou SSL)
-        $productExpiresSoon = isset($productData['expired_at']) && ($productData['expired_at'] - time()) / (60 * 60 * 24) <= 30;
-        $sslExpiresSoon = isset($productData['details']['ssl']['expires_on']) && (strtotime($productData['details']['ssl']['expires_on']) - time()) / (60 * 60 * 24) <= 30;
+    // --- 2. Transformer toutes les données brutes en objets Product ---
+    $productObjects = array_map(fn($p) => new Product($p), $allProducts);
 
-        // Condition 2: Espace disque presque plein
-        $diskAlmostFull = false;
-        if (isset($productData['details']['quota']['disk_usage'], $productData['details']['quota']['disk_limit']) && $productData['details']['quota']['disk_limit'] > 0) {
-            $diskAlmostFull = ($productData['details']['quota']['disk_usage'] / $productData['details']['quota']['disk_limit']) * 100 >= 90;
-        }
-
-        return $productExpiresSoon || $sslExpiresSoon || $diskAlmostFull;
+    // --- 3. Filtrer pour ne garder que les produits "critiques" en utilisant la logique de la classe Product ---
+    $criticalProducts = array_filter($productObjects, function (Product $product) {
+        return $product->isCritical();
     });
 
-    // Préparer les données pour la vue
+    // --- 4. Préparer les données pour la vue ---
     $data = [
         'result' => 'success',
-        'data' => array_map(fn($p) => new Product($p), array_values($criticalProducts))
+        // Les données sont déjà des objets Product, on ré-indexe juste le tableau après le filtre.
+        'data' => array_values($criticalProducts)
     ];
 
-    // On a besoin de la liste des comptes pour l'affichage
+    // --- 5. Récupérer les données annexes (comptes) ---
     $accountsCacheFile = $cacheDir . '/' . sha1('all_accounts') . '.json';
     $accounts = [];
-    if (Storage::exists($accountsCacheFile)) {
+    // Utilise le cache long pour les comptes
+    if (Storage::exists($accountsCacheFile) && (time() - Storage::lastModified($accountsCacheFile)) < $cacheDuration) {
         $accountsData = json_decode(Storage::get($accountsCacheFile), true);
-        // On s'assure que les données sont valides avant de les utiliser
         $accounts = isset($accountsData['data']) ? array_column($accountsData['data'], 'name', 'id') : [];
+    } else {
+        // Si les comptes ne sont pas en cache ou cache expiré, on pourrait les récupérer ici si l'API le permet.
+        // Pour l'instant, on laisse vide si pas en cache.
+        // TODO: Ajouter un appel API pour récupérer les comptes si nécessaire et les mettre en cache long.
+        // Pour l'exemple, on suppose que les comptes ne changent pas souvent et peuvent être mis en cache long.
+        // Si l'API Infomaniak a un endpoint pour les comptes, il faudrait l'appeler ici.
+        // Par exemple: $accountsData = $apiClient->getAccounts();
+        // Storage::put($accountsCacheFile, json_encode($accountsData));
     }
 
 } catch (RequestException $e) {
+    // --- Gestion des erreurs ---
     if ($e->hasResponse()) {
         $errorBody = $e->getResponse()->getBody()->getContents();
         $errorData = json_decode($errorBody, true);
