@@ -13,6 +13,8 @@ Le projet inclut une application d'exemple complète qui démontre des fonctionn
 *   **Basé sur Guzzle :** Utilise GuzzleHttp, le standard de l'industrie, pour des communications HTTP fiables.
 *   **Données sous forme d'Objets :** Les réponses de l'API pour les produits sont automatiquement transformées en objets `Product`, facilitant la manipulation des données.
 *   **Conforme PSR-4 :** Respecte les standards PHP modernes pour l'autoloading et l'interopérabilité.
+*   **Gestion des Comptes :** Méthode dédiée pour récupérer la liste de vos comptes Infomaniak.
+*   **Gestion de la Pagination :** Récupère automatiquement tous les produits, même si l'API les retourne par pages.
 *   **Application d'Exemple Complète :** Le dossier `example/` contient une interface web prête à l'emploi avec :
     *   Un tableau de bord pour les produits critiques (expirations proches).
     *   Une liste complète des produits avec recherche, filtrage et pagination.
@@ -53,11 +55,16 @@ Voici un exemple simple pour récupérer vos 15 premiers produits.
 
 require __DIR__ . '/vendor/autoload.php';
 
-use Beriyack\Infomaniak\InfomaniakApiClient;
-use Beriyack\Infomaniak\Product;
+use App\InfomaniakApiClient; // Utilisation du namespace correct
+use App\Product; // Utilisation du namespace correct
 
 // Remplacez par votre véritable token
-define('API_INFOMANIAK', 'VOTRE_TOKEN_API_ICI');
+// Assurez-vous que API_INFOMANIAK est défini, par exemple dans un fichier config.secret.php
+// define('API_INFOMANIAK', 'VOTRE_TOKEN_API_ICI'); 
+// Ou chargez-le depuis les variables d'environnement.
+if (!defined('API_INFOMANIAK')) {
+    die("Le token API Infomaniak n'est pas défini. Veuillez le définir dans config.secret.php ou via une variable d'environnement.");
+}
 
 $baseUri = 'https://api.infomaniak.com';
 $certificatePath = __DIR__ . '/example/USERTrust RSA Certification Authority.crt'; // Optionnel, pour le développement local
@@ -66,22 +73,38 @@ try {
     // 1. Initialisez le client
     $apiClient = new InfomaniakApiClient($baseUri, API_INFOMANIAK, $certificatePath);
 
-    // 2. Effectuez un appel à l'API
-    $response = $apiClient->get('/1/products');
+    // 2. Récupérez les comptes
+    echo "--- Comptes Infomaniak ---\n";
+    $accountsResponse = $apiClient->getAccounts();
+    if (isset($accountsResponse['result']) && $accountsResponse['result'] === 'success') {
+        foreach ($accountsResponse['data'] as $account) {
+            echo sprintf("ID: %d, Nom: %s\n", $account['id'], $account['name']);
+        }
+    } else {
+        echo "Impossible de récupérer les comptes.\n";
+    }
+    echo "\n";
 
-    // 3. Traitez les résultats
-    if (isset($response['result']) && $response['result'] === 'success') {
+    // 3. Récupérez les produits (les 15 premiers par défaut)
+    echo "--- Produits Infomaniak (15 premiers) ---\n";
+    $productsResponse = $apiClient->get('/1/products');
+
+    // 4. Traitez les résultats
+    if (isset($productsResponse['result']) && $productsResponse['result'] === 'success') {
         // Transformez les données brutes en objets Product
-        $products = array_map(fn($p) => new Product($p), $response['data']);
+        $products = array_map(fn($p) => new Product($p), $productsResponse['data']);
 
         foreach ($products as $product) {
             echo sprintf(
-                "ID: %d, Nom: %s, Service: %s\n",
+                "ID: %d, Nom: %s, Service: %s, Expiration: %s\n",
                 $product->getId(),
                 $product->getCustomerName(),
-                $product->getServiceName()
+                $product->getServiceName(),
+                $product->getFormattedExpiredAt()
             );
         }
+    } else {
+        echo "Impossible de récupérer les produits.\n";
     }
 
 } catch (Exception $e) {
@@ -96,10 +119,11 @@ try {
 Pour une démonstration complète, explorez l'application dans le dossier `example/`.
 
 1.  **Configuration :**
-    *   Créez un fichier `config.secret.php` à la racine du projet (au même niveau que le dossier `vendor/`).
+    *   Créez un fichier `config.secret.php` à **trois niveaux au-dessus** du dossier `infomaniak-api-client`. Par exemple, si votre projet est dans `d:/projets/infomaniak-api-client/`, le fichier doit être dans `d:/config.secret.php`. 
     *   Ajoutez-y votre token d'API :
         ```php
         <?php
+        // config.secret.php
         define('API_INFOMANIAK', 'VOTRE_TOKEN_API_ICI');
         ```
 
@@ -118,3 +142,10 @@ Les contributions sont les bienvenues ! Pour toute amélioration, correction de 
 ## 📄 Licence
 
 Ce projet est distribué sous la licence MIT. Voir le fichier `LICENSE` pour plus de détails.
+
+
+## 📧 Contact
+
+Pour toute question ou suggestion, vous pouvez me contacter via [Beriyack](https://github.com/Beriyack).
+
+-----
