@@ -5,6 +5,12 @@ namespace App;
 use GuzzleHttp\Client;
 use GuzzleHttp\Exception\RequestException;
 
+/**
+ * 
+ *
+ * @author Beriyack
+ * @version 1.0.0
+ */
 class InfomaniakApiClient
 {
     private Client $client;

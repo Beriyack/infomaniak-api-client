@@ -4,6 +4,12 @@ namespace App;
 
 use JsonSerializable;
 
+/**
+ * 
+ *
+ * @author Beriyack
+ * @version 1.0.0
+ */
 class Product implements JsonSerializable
 {
     private int $id;
